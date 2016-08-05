@@ -4,7 +4,6 @@ import (
   "fmt"
   "io"
   "net/http"
-  // "os"
   "sync"
   "time"
 )
@@ -27,26 +26,7 @@ func shareHandler(w http.ResponseWriter, r *http.Request) {
   }
 
   // Goroutine that sprays audio to all listeners
-  go func() {
-    count := 0
-    for {
-      time.Sleep(time.Millisecond)
-      if len(listeners) == 0 {
-        continue
-      }
-
-      audio := <- c
-      mutex.Lock()
-      for _, w := range listeners {
-        w.Write(audio)
-        if count % 100 == 0 {
-          w.(http.Flusher).Flush()
-        }
-      }
-      mutex.Unlock()
-      count++
-    }
-  }()
+  go spray()
 
   for {
     part, err_part := reader.NextPart()
@@ -78,7 +58,24 @@ func listenHandler(w http.ResponseWriter, r *http.Request) {
 
   // Keep connection alive
   for {
-    time.Sleep(time.Second)
+    time.Sleep(time.Second * 10)
+  }
+}
+
+func spray() {
+  for {
+    time.Sleep(time.Millisecond)
+    if len(listeners) == 0 {
+      continue
+    }
+
+    audio := <- c
+    mutex.Lock()
+    for _, w := range listeners {
+      w.Write(audio)
+      w.(http.Flusher).Flush()
+    }
+    mutex.Unlock()
   }
 }
 
