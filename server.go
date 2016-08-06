@@ -4,12 +4,26 @@ import (
   "fmt"
   "io"
   "net/http"
+  "os"
   "sync"
   "time"
 )
 
+type flushWriter struct {
+  f http.Flusher
+  w io.Writer
+}
+
+func (fw *flushWriter) Write(p []byte) (n int, err error) {
+  n, err = fw.w.Write(p)
+  if fw.f != nil {
+    fw.f.Flush()
+  }
+  return
+}
+
 var c = make(chan []byte, 1024)
-var listeners = map[int]http.ResponseWriter{}
+var listeners = map[int]flushWriter{}
 var counter = 0
 var mutex = &sync.Mutex{}
 
@@ -35,14 +49,14 @@ func shareHandler(w http.ResponseWriter, r *http.Request) {
     }
     fmt.Println(part)
     if part.FormName() == "uploadfile" {
-        buf := make([]byte, 8192)
-        for {
-          n, err := part.Read(buf)
-          if err == io.EOF {
-            break
-          }
-          c <- buf[:n]
+      buf := make([]byte, 1024)
+      for {
+        n, err := part.Read(buf)
+        if err == io.EOF {
+          break
         }
+        c <- buf[:n]
+      }
     }
   }
 }
@@ -50,8 +64,13 @@ func shareHandler(w http.ResponseWriter, r *http.Request) {
 func listenHandler(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Content-type", "audio/mpeg")
 
+  fw := flushWriter{w: w}
+  if f, ok := w.(http.Flusher); ok {
+    fw.f = f
+  }
+
   mutex.Lock()
-  listeners[counter] = w
+  listeners[counter] = fw
   counter++
   fmt.Println(listeners)
   mutex.Unlock()
@@ -71,9 +90,8 @@ func spray() {
 
     audio := <- c
     mutex.Lock()
-    for _, w := range listeners {
-      w.Write(audio)
-      w.(http.Flusher).Flush()
+    for _, fw := range listeners {
+      fw.Write(audio)
     }
     mutex.Unlock()
   }
