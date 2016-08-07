@@ -4,7 +4,7 @@ import (
   "fmt"
   "io"
   "net/http"
-  "os"
+  // "os"
   "sync"
   "time"
 )
@@ -45,7 +45,7 @@ func shareHandler(w http.ResponseWriter, r *http.Request) {
   for {
     part, err_part := reader.NextPart()
     if err_part == io.EOF {
-        break
+      break
     }
     fmt.Println(part)
     if part.FormName() == "uploadfile" {
@@ -55,7 +55,9 @@ func shareHandler(w http.ResponseWriter, r *http.Request) {
         if err == io.EOF {
           break
         }
-        c <- buf[:n]
+        // Have to copy to a new byte array for SOME UNKNOWN REASON
+        final_buf := append([]byte{}, buf[:n]...)
+        c <- final_buf
       }
     }
   }
@@ -63,6 +65,8 @@ func shareHandler(w http.ResponseWriter, r *http.Request) {
 
 func listenHandler(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Content-type", "audio/mpeg")
+  w.Header().Set("Transfer-Encoding", "chunked")
+  w.WriteHeader(200)
 
   fw := flushWriter{w: w}
   if f, ok := w.(http.Flusher); ok {
